@@ -2,6 +2,65 @@
 
 <changelog>
     <release
+        version="2.0.1"
+        versioncode="74">
+        <change>Seperate list layout settings for home menu items and Slimbrowseitems</change>
+        <change>Notification shows button for next song instead of the previous one</change>
+        <change>Fix artwork display in the Spotty plugin</change>
+        <change>Option to easy switch between list and grid layouts</change>
+        <change>Ignore icon based popup message when in the Now Playing screen</change>
+        <change>Handle invalid server address</change>
+        <change>Fix some reported crashes</change>
+    </release>
+
+    <release
+        version="2.0.0"
+        versioncode="73">
+        <change>Rewrite Squeezer to use the more modern CometD protocol to connect to the server</change>
+        <change>Full support for Apps/Plugins</change>
+        <change>Connect to mysqueezebox.com</change>
+        <change>Additional browse modes, Album Artists, All Artists and Composers</change>
+        <change>Support for extra information and options for Artists/albums/Tracks via the context
+            menu</change>
+        <change>Library Views and Remote Music Libraries</change>
+        <change>Add French translation. Contributed by Olivier Sirol</change>
+    </release>
+
+    <release
+        version="1.5.4"
+        versioncode="68">
+        <change>Show a button on the notification to disconnect Squeezer (and remove the notification).</change>
+
+        <change>Disconnect Squeezer when it's swiped from the recent apps list.</change>
+    </release>
+
+    <release
+        version="1.5.3"
+        versioncode="66">
+        <change>Always show a notification while connected to a server. This is a requirement of Android.</change>
+
+        <change>Show lyrics if provided by the server.</change>
+
+        <change>Show artist instead of album in notifications.</change>
+
+        <change>Fix race condition in display of favorite.</change>
+
+        <change>Fix display problems on earlier Android versions.</change>
+    </release>
+
+    <release
+        version="1.5.2"
+        versioncode="64">
+        <change>Update to support Android Pie.</change>
+
+        <change>Support notification settings.</change>
+
+        <change>Ask for permissions at runtime.</change>
+
+        <change>Add/remove music from favorites.</change>
+    </release>
+
+    <release
         version="1.5.1"
         versioncode="61">
         <change>Fix assorted potential crashes.</change>

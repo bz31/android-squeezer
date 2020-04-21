@@ -1,0 +1,5 @@
+&bull; Enable extras menu
+
+&bull; Use vector graphics to reduce download size of the app
+
+&bull; Fix a reported crash

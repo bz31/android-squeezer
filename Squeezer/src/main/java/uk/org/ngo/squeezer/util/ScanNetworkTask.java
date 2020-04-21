@@ -2,7 +2,11 @@ package uk.org.ngo.squeezer.util;
 
 import android.content.Context;
 import android.net.wifi.WifiManager;
-import android.support.annotation.Nullable;
+
+import androidx.annotation.NonNull;
+
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import com.google.common.annotations.VisibleForTesting;
@@ -13,19 +17,23 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.TreeMap;
 
-import uk.org.ngo.squeezer.Util;
+import uk.org.ngo.squeezer.R;
 
 /**
  * Scans the local network for servers.
  */
-public class ScanNetworkTask extends android.os.AsyncTask<Void, Void, Void> {
-    private static final String TAG = "scanNetworkTask";
-
-    private final Context mContext;
+public class ScanNetworkTask implements Runnable {
+    private static final String TAG = ScanNetworkTask.class.getSimpleName();
 
     private final ScanNetworkCallback callback;
+    private final WifiManager wm;
+    private final int defaultHttpPort;
+    private final Handler uiThreadHandler = new Handler(Looper.getMainLooper());
+    private volatile boolean cancelled;
 
     /**
      * Map server names to IP addresses.
@@ -40,27 +48,31 @@ public class ScanNetworkTask extends android.os.AsyncTask<Void, Void, Void> {
     /**
      * Maximum time to wait between discovery attempts (ms).
      */
-    private static final int DISCOVERY_ATTEMPT_TIMEOUT = 1000;
+    private static final int DISCOVERY_ATTEMPT_TIMEOUT = 1400;
 
     public ScanNetworkTask(Context context, ScanNetworkCallback callback) {
-        mContext = context;
         this.callback = callback;
+        wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        defaultHttpPort = context.getResources().getInteger(R.integer.DefaultHttpPort);
     }
 
     /**
      * Discover Squeeze servers on the local network.
      * <p>
-     * Do this by sending MAX_DISCOVERY_ATTEMPT UDP broadcasts to port 3483 at approximately
-     * DISCOVERY_ATTEMPT_TIMEOUT intervals. Squeeze servers are supposed to listen for this, and
-     * respond with a packet that starts 'E' and some information about the server, including
-     * its name.
+     * Do this by sending an UDP broadcasts to port 3483 and wait approximately
+     * DISCOVERY_ATTEMPT_TIMEOUT for responses. Squeeze servers are supposed to listen for this,
+     * and respond with a packet that starts 'E' and some information about the server in type,
+     * value pairs
      * <p>
-     * Map the name to an IP address and store in mDiscoveredServers for later use.
+     * The server name is the section with the type "NAME".
+     * The http port is the section with the type "JSON".
+     * <p>
+     * Map the name to an IP address:port and store in mServerMap for later use.
      * <p>
      * See the Slim::Networking::Discovery module in Squeeze server for more details.
      */
     @Override
-    protected Void doInBackground(Void... unused) {
+    public void run() {
         WifiManager.WifiLock wifiLock;
         DatagramSocket socket = null;
 
@@ -80,8 +92,6 @@ public class ScanNetworkTask extends android.os.AsyncTask<Void, Void, Void> {
         byte[] data = new byte[512];
         System.arraycopy(request, 0, data, 0, request.length);
 
-        WifiManager wm = (WifiManager) mContext
-                .getApplicationContext().getSystemService(Context.WIFI_SERVICE);
         wifiLock = wm.createWifiLock(TAG);
 
         // mServerMap.put("Dummy", "127.0.0.1");
@@ -103,21 +113,19 @@ public class ScanNetworkTask extends android.os.AsyncTask<Void, Void, Void> {
             socket.send(discoveryPacket);
             timedOut = false;
             while (!timedOut) {
-                if (isCancelled()) {
+                if (cancelled) {
                     break;
                 }
                 try {
                     socket.receive(responsePacket);
                     if (buf[0] == (byte) 'E') {
-                        // There's no mechanism for the server to return the port
-                        // the CLI is listening on, so assume it's the default and
-                        // append it to the address.
-                        String host = responsePacket.getAddress().getHostAddress();
-                        String name = extractNameFromBuffer(buf);
+                        Map<String, String> discover = parseDiscover(responsePacket.getLength(), responsePacket.getData());
 
-                        publishProgress();
+                        String name = discover.get("NAME");
                         if (name != null) {
-                            mServerMap.put(name, host);
+                            String host = responsePacket.getAddress().getHostAddress();
+                            String port = discover.containsKey("JSON") ? discover.get("JSON") : String.valueOf(defaultHttpPort);
+                            mServerMap.put(name, host + ':' + port);
                         }
                     }
                 } catch (IOException e) {
@@ -129,82 +137,79 @@ public class ScanNetworkTask extends android.os.AsyncTask<Void, Void, Void> {
             // new DatagramSocket(3483)
         } catch (UnknownHostException e) {
             // InetAddress.getByName()
-            Util.crashlyticsLogException(e);
+            Log.e(TAG, "UnknownHostException", e);
+            // TODO remote logging Util.crashlyticsLogException(e);
         } catch (IOException e) {
             // socket.send()
-            Util.crashlyticsLogException(e);
-        }
+            Log.e(TAG, "IOException", e);
+            // TODO remote logging Util.crashlyticsLogException(e);
+        } finally {
+            if (socket != null) {
+                socket.close();
+            }
 
-        if (socket != null) {
-            socket.close();
+            Log.v(TAG, "Scanning complete, unlocking WiFi");
+            wifiLock.release();
         }
-
-        Log.v(TAG, "Scanning complete, unlocking WiFi");
-        wifiLock.release();
 
         // For testing that multiple servers are handled correctly.
         // mServerMap.put("Dummy", "127.0.0.1");
-        return null;
+        uiThreadHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                callback.onScanFinished(mServerMap);
+            }
+        });
     }
 
     /**
-     * Extracts the server name from a Squeezeserver broadcast response.
+     * Parse a Squeezeserver broadcast response.
      * <p>
      * The response buffer consists of a literal 'E' followed by 1 or more packed tuples that
      * follow the format {4-byte-type}{1-byte-length}{[length]-bytes-values}.
      * <p>
-     * The server name is the section with the type "NAME".
-     * <p>
      * See the code in the server's Slim/Networking/Discovery::gotTLVRequest() method for more
      * details on how the response is constructed.
      *
-     *
-     * @param buffer The buffer to scan
-     * @return The detected server name. May be null if the NAME section was not present or if
-     *     the buffer was malformed.
+     * @return A map with type, value from the response packet. May be empty if the response is
+     *      truncated
      */
     @VisibleForTesting
-    @Nullable
-    static String extractNameFromBuffer(byte[] buffer) {
-        int i = 1;  // Skip over the initial 'E'.
+    @NonNull
+    static Map<String, String> parseDiscover(int packetLength, byte[] buffer) {
+        Map<String, String> result = new HashMap<>();
 
-        // Find the 'NAME' tuple. It's the only one that starts with an 'N'.
-        while (i < buffer.length - 6) {
-            if (buffer[i] == 'N' && buffer[i+1] == 'A' && buffer[i+2] == 'M' && buffer[i+3] == 'E') {
+        int i = 1;
+        while (i < packetLength) {
+            // Check if the buffer is truncated by the server, and bail out if it is.
+            if (i + 5 > packetLength) {
                 break;
             }
 
-            i += 4;  // Skip over the type identifier
-            i += buffer[i] + 1; // Skip the length indicator and the value
+            // Extract type and skip over it
+            String type = new String(buffer, i, 4);
+            i += 4;
+
+            // Read the length, and skip over it.& 0xff to it is an unsigned byte
+            int length = buffer[i++] & 0xFF;
+
+            // Check if the buffer is truncated by the server, and bail out if it is.
+            if (i + length > packetLength) {
+                break;
+            }
+
+            // Extract the value and skip over it.
+            String value = new String(buffer, i, length);
+            i += length;
+
+            result.put(type, value);
         }
 
-        // There must be at least 6 characters left in the buffer (4 for "NAME", 1 for the
-        // length byte, and at least 1 for the value. If not, this is a corrupt buffer.
-        if (i > (buffer.length - 6)) {
-            return null;
-        }
-
-        i += 4;        // Skip over the 'NAME' tag.
-        // Read the length, and skip over it. Since bytes are signed, & 0xff to prevent treating
-        // the high-bit as a sign bit.
-        int length = buffer[i++] & 0xFF;
-
-        // There must be at least "length" bytes left in the buffer.
-        if ((i + length) > buffer.length) {
-            return null;
-        }
-
-        // i now pointing at the start of the value for the NAME tuple.  Extract "length" bytes.
-        return new String(buffer, i, length);
+        return result;
     }
 
-    @Override
-    protected void onCancelled(Void result) {
-        callback.onScanFinished(mServerMap);
-    }
-
-    @Override
-    protected void onPostExecute(Void result) {
+    public void cancel() {
+        cancelled = true;
         callback.onScanFinished(mServerMap);
     }
 

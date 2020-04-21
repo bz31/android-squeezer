@@ -17,37 +17,30 @@
 -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="uk.org.ngo.squeezer"
-    android:versionCode="13" android:versionName="0.9.1">
-
-    <!-- Crashlytics is for API 8+. Override that here, as Squeezer checks for
-         the API level before invoking it. -->
-    <uses-sdk android:targetSdkVersion="21" android:minSdkVersion="7"
-        tools:overrideLibrary="com.crashlytics.android,com.crashlytics.android.answers,io.fabric.sdk.android,com.crashlytics.android.core,com.crashlytics.android.beta"/>
+    package="uk.org.ngo.squeezer">
 
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.WRITE_SETTINGS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.REORDER_TASKS"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
 
     <application
         android:icon="@drawable/ic_launcher"
         android:theme="@style/AppTheme"
         android:label="@string/app_name"
         android:name=".Squeezer"
+        android:usesCleartextTraffic="true"
         android:allowBackup="true">
 
-        <!-- enable the search dialog to send searches to SearchActivity -->
-        <meta-data android:name="android.app.default_searchable"
-            android:value=".SearchActivity"/>
+        <!-- Newer Android versions no longer include the Apache HTTP library -->
+        <uses-library android:name="org.apache.http.legacy" android:required="false" />
 
-        <activity android:name=".HomeActivity"
+        <activity android:name=".itemlist.HomeActivity"
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
@@ -56,218 +49,57 @@
         </activity>
 
         <activity
+            android:name=".itemlist.HomeMenuActivity"
+            android:label="@string/app_name"
+            android:parentActivityName=".itemlist.HomeActivity">
+        </activity>
+
+        <activity
             android:name=".NowPlayingActivity"
             android:label="@string/app_name"
             android:exported="true"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
+            android:parentActivityName=".itemlist.HomeActivity">
         </activity>
 
         <activity
             android:name=".SettingsActivity"
             android:label="@string/activity_settings_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
+            android:parentActivityName=".itemlist.HomeActivity">
         </activity>
 
         <activity
-            android:name=".DisconnectedActivity"
-            android:label="Disconnected"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".SearchActivity"
-            android:label="@string/app_name"
-            android:launchMode="singleTop"
-            android:parentActivityName=".HomeActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.SEARCH"/>
-            </intent-filter>
-            <meta-data
-                android:name="android.app.searchable"
-                android:resource="@xml/searchable"/>
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".RandomplayActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
+            android:name=".ConnectActivity"
+            android:label="@string/disconnected_text"
+            android:parentActivityName=".itemlist.HomeActivity">
         </activity>
 
         <activity
             android:name=".itemlist.PlayerListActivity"
             android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
+            android:parentActivityName=".itemlist.HomeActivity">
         </activity>
 
         <activity
             android:name=".itemlist.AlarmsActivity"
             android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".itemlist.ArtistListActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".itemlist.AlbumListActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".itemlist.YearListActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".itemlist.GenreListActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".itemlist.MusicFolderListActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".itemlist.SongListActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
+            android:parentActivityName=".itemlist.HomeActivity">
         </activity>
 
         <activity
             android:name=".itemlist.CurrentPlaylistActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
+            android:parentActivityName=".NowPlayingActivity">
         </activity>
 
         <activity
-            android:name=".itemlist.PlaylistsActivity"
+            android:name=".itemlist.PluginListActivity"
             android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
+            android:parentActivityName=".itemlist.HomeActivity">
         </activity>
-
-        <activity
-            android:name=".itemlist.PlaylistSongsActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".itemlist.RadioListActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".itemlist.ApplicationListActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".itemlist.PluginItemListActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".itemlist.FavoriteListActivity"
-            android:label="@string/app_name"
-            android:parentActivityName=".HomeActivity">
-            <meta-data
-                android:name="android.support.PARENT_ACTIVITY"
-                android:value="uk.org.ngo.squeezer.HomeActivity"/>
-        </activity>
-
-        <activity
-            android:name=".download.CancelDownloadsActivity"
-            android:theme="@android:style/Theme.Dialog"/>
 
         <service android:exported="false" android:label="Squeezer Service"
             android:name=".service.SqueezeService">
         </service>
-
-        <receiver
-            android:name=".download.DownloadStatusReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
-                <action android:name="android.intent.action.DOWNLOAD_NOTIFICATION_CLICKED" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Used for install referrer tracking -->
-        <receiver android:name="com.google.android.apps.analytics.AnalyticsReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.android.vending.INSTALL_REFERRER"/>
-            </intent-filter>
-        </receiver>
-        <meta-data android:name="com.crashlytics.ApiKey" android:value="564923eeae7942c2822447dec7527419e8e62e51"/>
     </application>
 </manifest>

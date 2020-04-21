@@ -1,0 +1,13 @@
+&bull; Seperate list layout settings for home menu items and Slimbrowseitems
+
+&bull; Notification shows button for next song instead of the previous one
+
+&bull; Fix artwork display in the Spotty plugin
+
+&bull; Option to easy switch between list and grid layouts
+
+&bull; Ignore icon based popup message when in the Now Playing screen
+
+&bull; Handle invalid server address
+
+&bull; Fix some reported crashes

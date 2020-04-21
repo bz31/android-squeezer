@@ -22,7 +22,6 @@
     </declare-styleable>
 
     <declare-styleable name="ic_action">
-        <attr name="ic_action_av_connect" format="reference"/>
         <attr name="ic_action_av_next" format="reference"/>
         <attr name="ic_action_av_pause" format="reference"/>
         <attr name="ic_action_av_play" format="reference"/>
@@ -39,6 +38,11 @@
         <attr name="ic_action_view_as_grid" format="reference"/>
         <attr name="ic_action_view_as_list" format="reference"/>
     </declare-styleable>
+
+    <attr name="ic_action_av_volume_down" format="reference"/>
+    <attr name="ic_action_av_volume_up" format="reference"/>
+
+    <attr name="ic_action_av_playlist" format="reference"/>
 
     <declare-styleable name="playlist">
         <!-- The highlight colour used to show currently playing items
@@ -57,13 +61,6 @@
     <attr name="ic_alarm_settings" format="reference"/>
     <attr name="ic_delete" format="reference"/>
 
-    <declare-styleable name="FloatLabelLayout">
-        <attr name="floatLabelTextAppearance" format="reference" />
-        <attr name="floatLabelTrigger" format="enum">
-            <enum name="text" value="0" />
-            <enum name="focus" value="1" />
-        </attr>
-        <attr name="floatLabelSidePadding" format="reference|dimension" />
-        <attr name="floatLabelColor" format="reference|color"/>
-    </declare-styleable>
+    <attr name="icon_context_menu" format="reference"/>
+
 </resources>

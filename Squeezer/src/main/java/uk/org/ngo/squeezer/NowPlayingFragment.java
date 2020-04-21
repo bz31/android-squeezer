@@ -29,33 +29,34 @@ import android.net.NetworkInfo;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.IBinder;
-import android.support.annotation.MainThread;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
-import android.support.annotation.UiThread;
-import android.support.v4.app.DialogFragment;
-import android.support.v4.app.Fragment;
-import android.support.v4.app.FragmentManager;
-import android.support.v4.app.FragmentTransaction;
-import android.support.v7.app.ActionBar;
+import androidx.annotation.MainThread;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.annotation.UiThread;
+import androidx.core.view.GestureDetectorCompat;
+import androidx.fragment.app.DialogFragment;
+import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
+import androidx.fragment.app.FragmentTransaction;
+import androidx.appcompat.app.ActionBar;
 import android.util.AttributeSet;
 import android.util.Log;
-import android.view.ContextMenu;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.google.common.base.Joiner;
 import com.google.common.base.Strings;
@@ -63,47 +64,47 @@ import com.google.common.base.Strings;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 
 import uk.org.ngo.squeezer.dialog.AboutDialog;
 import uk.org.ngo.squeezer.dialog.EnableWifiDialog;
 import uk.org.ngo.squeezer.framework.BaseActivity;
+import uk.org.ngo.squeezer.framework.BaseItemView;
 import uk.org.ngo.squeezer.itemlist.AlarmsActivity;
-import uk.org.ngo.squeezer.itemlist.AlbumListActivity;
 import uk.org.ngo.squeezer.itemlist.CurrentPlaylistActivity;
+import uk.org.ngo.squeezer.itemlist.HomeActivity;
 import uk.org.ngo.squeezer.itemlist.PlayerListActivity;
-import uk.org.ngo.squeezer.itemlist.SongListActivity;
-import uk.org.ngo.squeezer.model.Artist;
+import uk.org.ngo.squeezer.itemlist.PluginListActivity;
+import uk.org.ngo.squeezer.itemlist.PluginViewLogic;
+import uk.org.ngo.squeezer.model.CurrentPlaylistItem;
 import uk.org.ngo.squeezer.model.Player;
 import uk.org.ngo.squeezer.model.PlayerState;
 import uk.org.ngo.squeezer.model.PlayerState.RepeatStatus;
 import uk.org.ngo.squeezer.model.PlayerState.ShuffleStatus;
-import uk.org.ngo.squeezer.model.Song;
+import uk.org.ngo.squeezer.model.Plugin;
 import uk.org.ngo.squeezer.service.ConnectionState;
 import uk.org.ngo.squeezer.service.ISqueezeService;
-import uk.org.ngo.squeezer.service.ServerString;
 import uk.org.ngo.squeezer.service.SqueezeService;
 import uk.org.ngo.squeezer.service.event.ConnectionChanged;
-import uk.org.ngo.squeezer.service.event.FavoritesExists;
 import uk.org.ngo.squeezer.service.event.HandshakeComplete;
+import uk.org.ngo.squeezer.service.event.HomeMenuEvent;
 import uk.org.ngo.squeezer.service.event.MusicChanged;
 import uk.org.ngo.squeezer.service.event.PlayStatusChanged;
 import uk.org.ngo.squeezer.service.event.PlayersChanged;
 import uk.org.ngo.squeezer.service.event.PowerStatusChanged;
+import uk.org.ngo.squeezer.service.event.RegisterSqueezeNetwork;
 import uk.org.ngo.squeezer.service.event.RepeatStatusChanged;
 import uk.org.ngo.squeezer.service.event.ShuffleStatusChanged;
 import uk.org.ngo.squeezer.service.event.SongTimeChanged;
 import uk.org.ngo.squeezer.util.ImageFetcher;
-import uk.org.ngo.squeezer.widget.FavoriteButton;
+import uk.org.ngo.squeezer.widget.OnSwipeListener;
 
-import static uk.org.ngo.squeezer.widget.FavoriteButton.FAVORITE_FALSE;
-import static uk.org.ngo.squeezer.widget.FavoriteButton.FAVORITE_TRUE;
-import static uk.org.ngo.squeezer.widget.FavoriteButton.FAVORITE_UNKNOWN;
-
-public class NowPlayingFragment extends Fragment implements View.OnCreateContextMenuListener {
+public class NowPlayingFragment extends Fragment {
 
     private static final String TAG = "NowPlayingFragment";
 
     private BaseActivity mActivity;
+    private PluginViewLogic pluginViewDelegate;
 
     @Nullable
     private ISqueezeService mService = null;
@@ -117,18 +118,16 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     private TextView trackText;
 
     @Nullable
-    private FavoriteButton btnFavorite;
-
-    @Nullable
-    private ImageView btnContextMenu;
+    private View btnContextMenu;
 
     private TextView currentTime;
 
     private TextView totalTime;
 
-    private MenuItem menu_item_connect;
-
     private MenuItem menu_item_disconnect;
+
+    private Plugin globalSearch;
+    private MenuItem menu_item_search;
 
     private MenuItem menu_item_poweron;
 
@@ -136,11 +135,7 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
 
     private MenuItem menu_item_players;
 
-    private MenuItem menu_item_playlist;
-
     private MenuItem menu_item_alarm;
-
-    private MenuItem menu_item_search;
 
     private ImageButton playPauseButton;
 
@@ -165,6 +160,10 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     // Updating the seekbar
     private boolean updateSeekBar = true;
 
+    private Button volumeButton;
+
+    private Button playlistButton;
+
     private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -184,9 +183,6 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
             }
         }
     };
-
-    /** Does the server support favorites? */
-    boolean serverCanFavorite = false;
 
     /** Dialog displayed while connecting to the server. */
     private ProgressDialog connectingDialog = null;
@@ -252,6 +248,7 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     public void onAttach(Activity activity) {
         super.onAttach(activity);
         mActivity = (BaseActivity) activity;
+        pluginViewDelegate = new PluginViewLogic(mActivity);
     }
 
     @Override
@@ -272,59 +269,45 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
         if (mFullHeightLayout) {
             v = inflater.inflate(R.layout.now_playing_fragment_full, container, false);
 
-            artistText = (TextView) v.findViewById(R.id.artistname);
-            albumText = (TextView) v.findViewById(R.id.albumname);
-            shuffleButton = (ImageButton) v.findViewById(R.id.shuffle);
-            repeatButton = (ImageButton) v.findViewById(R.id.repeat);
-            currentTime = (TextView) v.findViewById(R.id.currenttime);
-            totalTime = (TextView) v.findViewById(R.id.totaltime);
-            seekBar = (SeekBar) v.findViewById(R.id.seekbar);
+            artistText = v.findViewById(R.id.artistname);
+            albumText = v.findViewById(R.id.albumname);
+            shuffleButton = v.findViewById(R.id.shuffle);
+            repeatButton = v.findViewById(R.id.repeat);
+            currentTime = v.findViewById(R.id.currenttime);
+            totalTime = v.findViewById(R.id.totaltime);
+            seekBar = v.findViewById(R.id.seekbar);
+            volumeButton = v.findViewById(R.id.volume);
+            playlistButton = v.findViewById(R.id.playlist);
 
-            btnFavorite = (FavoriteButton) v.findViewById(R.id.favorite);
-            btnFavorite.setThemeId(mActivity.getThemeId());
-            btnFavorite.setFavoriteListener(new FavoriteButton.FavoriteListener() {
-                @Override
-                public void addFavorite() {
-                    Song song = getCurrentSong();
-                    if (song == null) {
-                        return;
-                    }
-                    mService.favoritesAdd(song.getUrl(), song.getName());
-                }
-
-                @Override
-                public void removeFavorite(@NonNull String index) {
-                    Song song = getCurrentSong();
-                    if (song == null) {
-                        return;
-                    }
-                    mService.favoritesDelete(song.getUrl(), index);
-                }
-            });
-
-            btnContextMenu = (ImageView) v.findViewById(R.id.context_menu);
-            btnContextMenu.setOnCreateContextMenuListener(this);
-            btnContextMenu.setOnClickListener(new OnClickListener() {
+            final BaseItemView.ViewHolder viewHolder = new BaseItemView.ViewHolder();
+            viewHolder.setContextMenu(v);
+            viewHolder.contextMenuButton.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    v.showContextMenu();
+                    CurrentPlaylistItem currentSong = getCurrentSong();
+                    // This extra check is if user pressed the button before visibility is set to GONE
+                    if (currentSong != null) {
+                        pluginViewDelegate.showContextMenu(viewHolder, currentSong);
+                    }
                 }
             });
+            btnContextMenu = viewHolder.contextMenuButtonHolder;
+            btnContextMenu.setTag(viewHolder);
         } else {
             v = inflater.inflate(R.layout.now_playing_fragment_mini, container, false);
 
-            mProgressBar = (ProgressBar) v.findViewById(R.id.progressbar);
-            artistAlbumText = (TextView) v.findViewById(R.id.artistalbumname);
+            mProgressBar = v.findViewById(R.id.progressbar);
+            artistAlbumText = v.findViewById(R.id.artistalbumname);
         }
 
-        albumArt = (ImageView) v.findViewById(R.id.album);
-        trackText = (TextView) v.findViewById(R.id.trackname);
-        playPauseButton = (ImageButton) v.findViewById(R.id.pause);
+        albumArt = v.findViewById(R.id.album);
+        trackText = v.findViewById(R.id.trackname);
+        playPauseButton = v.findViewById(R.id.pause);
 
         // May or may not be present in the layout, depending on orientation,
         // screen width, and so on.
-        nextButton = (ImageButton) v.findViewById(R.id.next);
-        prevButton = (ImageButton) v.findViewById(R.id.prev);
+        nextButton = v.findViewById(R.id.next);
+        prevButton = v.findViewById(R.id.prev);
 
         // Marquee effect on TextViews only works if they're focused.
         trackText.requestFocus();
@@ -335,14 +318,7 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
                 if (mService == null) {
                     return;
                 }
-                if (isConnected()) {
-                    Log.v(TAG, "Pause...");
-                    mService.togglePausePlay();
-                } else {
-                    // When we're not connected, the play/pause
-                    // button turns into a green connect button.
-                    onUserInitiatesConnect();
-                }
+                mService.togglePausePlay();
             }
         });
 
@@ -397,8 +373,22 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
                 }
             });
 
+            volumeButton.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    mActivity.showVolumePanel();
+                }
+            });
+
+            playlistButton.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    CurrentPlaylistActivity.show(mActivity);
+                }
+            });
+
             seekBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
-                Song seekingSong;
+                CurrentPlaylistItem seekingSong;
 
                 // Update the time indicator to reflect the dragged thumb
                 // position.
@@ -421,7 +411,7 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
                 // otherwise ignore the seek.
                 @Override
                 public void onStopTrackingTouch(SeekBar s) {
-                    Song thisSong = getCurrentSong();
+                    CurrentPlaylistItem thisSong = getCurrentSong();
 
                     updateSeekBar = true;
 
@@ -431,11 +421,25 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
                 }
             });
         } else {
-            // Clicking on the layout goes to NowPlayingActivity.
-            v.setOnClickListener(new OnClickListener() {
+            final GestureDetectorCompat detector = new GestureDetectorCompat(mActivity, new OnSwipeListener() {
+                // Clicking on the layout goes to NowPlayingActivity.
                 @Override
-                public void onClick(View v) {
+                public boolean onSingleTapUp(MotionEvent e) {
                     NowPlayingActivity.show(mActivity);
+                    return true;
+                }
+
+                // Swipe up on the layout goes to NowPlayingActivity.
+                @Override
+                public boolean onSwipeUp() {
+                    NowPlayingActivity.show(mActivity);
+                    return true;
+                }
+            });
+            v.setOnTouchListener(new View.OnTouchListener() {
+                @Override
+                public boolean onTouch(View v, MotionEvent event) {
+                    return detector.onTouchEvent(event);
                 }
             });
         }
@@ -514,7 +518,7 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
         }
 
         // Only include players that are connected to the server.
-        ArrayList<Player> connectedPlayers = new ArrayList<Player>();
+        ArrayList<Player> connectedPlayers = new ArrayList<>();
         for (Player player : players) {
             if (player.getConnected()) {
                 connectedPlayers.add(player);
@@ -534,13 +538,13 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
                     actionBarContext, android.R.layout.simple_spinner_dropdown_item,
                     connectedPlayers) {
                 @Override
-                public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                public View getDropDownView(int position, View convertView, @NonNull ViewGroup parent) {
                     return Util.getActionBarSpinnerItemView(actionBarContext, convertView, parent,
                             getItem(position).getName());
                 }
 
                 @Override
-                public View getView(int position, View convertView, ViewGroup parent) {
+                public @NonNull View getView(int position, View convertView, @NonNull ViewGroup parent) {
                     return Util.getActionBarSpinnerItemView(actionBarContext, convertView, parent,
                             getItem(position).getName());
                 }
@@ -572,7 +576,6 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
             if (connectedPlayers.size() == 1) {
                 actionBar.setTitle(connectedPlayers.get(0).getName());
             } else {
-                // TODO: Alert the user if there are no connected players.
                 actionBar.setTitle(R.string.app_name);
             }
         }
@@ -594,13 +597,6 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     public void onResume() {
         super.onResume();
         Log.d(TAG, "onResume...");
-
-        // Start it and have it run forever (until it shuts itself down).
-        // This is required so swapping out the activity (and unbinding the
-        // service connection in onDestroy) doesn't cause the service to be
-        // killed due to zero refcount.  This is our signal that we want
-        // it running in the background.
-        mActivity.startService(new Intent(mActivity, SqueezeService.class));
 
         if (mService != null) {
             maybeRegisterCallbacks(mService);
@@ -676,21 +672,23 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
      */
     @UiThread
     private void updateSongInfo(@NonNull PlayerState playerState) {
-        updateTimeDisplayTo(playerState.getCurrentTimeSecond(),
+        updateTimeDisplayTo((int)playerState.getCurrentTimeSecond(),
                 playerState.getCurrentSongDuration());
 
-        Song song = playerState.getCurrentSong();
+        CurrentPlaylistItem song = playerState.getCurrentSong();
+        if (song == null) {
+            // Create empty song if this is called (via _HandshakeComplete) before status is received
+            song = new CurrentPlaylistItem(new HashMap<String, Object>());
+        }
 
-        if (song != null) {
-            trackText.setText(song.getName());
+        // TODO handle button remapping (buttons in status response)
+        if (!song.getTrack().isEmpty()) {
+            trackText.setText(song.getTrack());
 
-            // If remote and number of tracks in playlist is not 1, it's spotify
-            // or another streaming service. Then make prev- en nextbutton available
-            if ((song.isRemote()) && (playerState.getCurrentPlaylistTracksNum() == 1)) {
-                // TODO: figure out how to parse the buttons HASH;
-                // for now just assume the next button is enabled if there was a
-                // "buttons" response.
-                setButtonState(nextButton, song.getButtons().length() == 0);
+            // don't remove rew and fwd for remote tracks, because a single track playlist
+            // is not an indication that fwd and rwd are invalid actions
+            if ((playerState.getCurrentPlaylistTracksNum() == 1) && !playerState.isRemote()) {
+                disableButton(nextButton);
                 disableButton(prevButton);
                 if (btnContextMenu != null) {
                     btnContextMenu.setVisibility(View.GONE);
@@ -704,19 +702,13 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
             }
 
             if (mFullHeightLayout) {
-                // Query to find out if this song is a favourite.
-                clearFavoriteInfo();
-                if (serverCanFavorite) {
-                    mService.favoritesExists(song.getUrl());
-                }
-
                 artistText.setText(song.getArtist());
-                albumText.setText(song.getAlbumName());
-                totalTime.setText(Util.formatElapsedTime(song.getDuration()));
+                albumText.setText(song.getAlbum());
+                totalTime.setText(Util.formatElapsedTime(playerState.getCurrentSongDuration()));
             } else {
                 artistAlbumText.setText(mJoiner.join(
                         Strings.emptyToNull(song.getArtist()),
-                        Strings.emptyToNull(song.getAlbumName())));
+                        Strings.emptyToNull(song.getAlbum())));
             }
         } else {
             trackText.setText("");
@@ -729,18 +721,10 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
             }
         }
 
-        if (song == null || !song.hasArtwork()) {
-            if (mFullHeightLayout) {
-                albumArt.setImageResource(song != null && song.isRemote()
-                        ? R.drawable.icon_iradio_noart_fullscreen
-                        : R.drawable.icon_album_noart_fullscreen);
-            } else {
-                albumArt.setImageResource(song != null && song.isRemote()
-                        ? R.drawable.icon_iradio_noart
-                        : R.drawable.icon_album_noart);
-            }
+        if (!song.hasArtwork()) {
+            albumArt.setImageDrawable(song.getIconDrawable(mActivity));
         } else {
-            ImageFetcher.getInstance(mActivity).loadImage(song.getArtworkUrl(), albumArt);
+            ImageFetcher.getInstance(mActivity).loadImage(song.getIcon(), albumArt);
         }
     }
 
@@ -776,7 +760,7 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
         }
 
         button.setEnabled(state);
-        Util.setAlpha(button, state ? 1.0f : 0.25f);
+        button.setAlpha(state ? 1.0f : 0.25f);
     }
 
     private boolean setSecondsElapsed(int seconds) {
@@ -797,7 +781,7 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
         return mService.getActivePlayer();
     }
 
-    private Song getCurrentSong() {
+    private CurrentPlaylistItem getCurrentSong() {
         PlayerState playerState = getPlayerState();
         return playerState != null ? playerState.getCurrentSong() : null;
     }
@@ -829,10 +813,11 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
         }
 
         if (mRegisteredCallbacks) {
-            mService.cancelSubscriptions(this);
             mService.getEventBus().unregister(this);
             mRegisteredCallbacks = false;
         }
+
+        pluginViewDelegate.resetContextMenu();
 
         super.onPause();
     }
@@ -846,76 +831,7 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     }
 
     /**
-     * Builds a context menu suitable for the currently playing song.
-     * <p>
-     * Takes the general song context menu, and disables items that make no sense for the song that
-     * is currently playing.
-     * <p>
-     * {@inheritDoc}
-     *
-     * @param menu
-     * @param v
-     * @param menuInfo
-     */
-    @Override
-    public void onCreateContextMenu(ContextMenu menu, View v,
-            ContextMenu.ContextMenuInfo menuInfo) {
-        super.onCreateContextMenu(menu, v, menuInfo);
-        MenuInflater inflater = getActivity().getMenuInflater();
-        inflater.inflate(R.menu.songcontextmenu, menu);
-
-        menu.findItem(R.id.play_now).setVisible(false);
-        menu.findItem(R.id.play_next).setVisible(false);
-        menu.findItem(R.id.add_to_playlist).setVisible(false);
-
-        menu.findItem(R.id.view_this_album).setVisible(true);
-        menu.findItem(R.id.view_albums_by_song).setVisible(true);
-        menu.findItem(R.id.view_songs_by_artist).setVisible(true);
-    }
-
-    /**
-     * Handles clicks on the context menu.
-     * <p>
-     * {@inheritDoc}
-     *
-     * @param item
-     *
-     * @return
-     */
-    @Override
-    public boolean onContextItemSelected(MenuItem item) {
-        Song song = getCurrentSong();
-        if (song == null || song.isRemote()) {
-            return false;
-        }
-
-        // Note: Very similar to code in SongView:doItemContext().  Refactor?
-        switch (item.getItemId()) {
-            case R.id.download:
-                mActivity.downloadItem(song);
-                return true;
-
-            case R.id.view_this_album:
-                SongListActivity.show(getActivity(), song.getAlbum());
-                return true;
-
-            case R.id.view_albums_by_song:
-                AlbumListActivity.show(getActivity(),
-                        new Artist(song.getArtistId(), song.getArtist()));
-                return true;
-
-            case R.id.view_songs_by_artist:
-                SongListActivity.show(getActivity(),
-                        new Artist(song.getArtistId(), song.getArtist()));
-                return true;
-
-            default:
-                throw new IllegalStateException("Unknown menu ID.");
-        }
-    }
-
-    /**
-     * @see android.support.v4.app.Fragment#onCreateOptionsMenu(android.view.Menu,
+     * @see Fragment#onCreateOptionsMenu(android.view.Menu,
      * android.view.MenuInflater)
      */
     @Override
@@ -926,14 +842,12 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
         MenuInflater i = mActivity.getMenuInflater();
         i.inflate(R.menu.now_playing_fragment, menu);
 
-        menu_item_connect = menu.findItem(R.id.menu_item_connect);
+        menu_item_search = menu.findItem(R.id.menu_item_search);
         menu_item_disconnect = menu.findItem(R.id.menu_item_disconnect);
         menu_item_poweron = menu.findItem(R.id.menu_item_poweron);
         menu_item_poweroff = menu.findItem(R.id.menu_item_poweroff);
         menu_item_players = menu.findItem(R.id.menu_item_players);
-        menu_item_playlist = menu.findItem(R.id.menu_item_playlist);
         menu_item_alarm = menu.findItem(R.id.menu_item_alarm);
-        menu_item_search = menu.findItem(R.id.menu_item_search);
     }
 
     /**
@@ -944,33 +858,26 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     public void onPrepareOptionsMenu(Menu menu) {
         boolean connected = isConnected();
 
-        // Don't show an option to connect if there's no server to connect to.
-        boolean knowServerAddress = new Preferences(mActivity).getServerAddress() != null;
-        menu_item_connect.setEnabled(knowServerAddress);
-
         // These are all set at the same time, so one check is sufficient
-        if (menu_item_connect != null) {
+        if (menu_item_disconnect != null) {
             // Set visibility and enabled state of menu items that are not player-specific.
-            menu_item_connect.setVisible(!connected);
+            menu_item_search.setVisible(globalSearch != null);
             menu_item_disconnect.setVisible(connected);
 
             // Set visibility and enabled state of menu items that are player-specific and
             // require a connection to the server.
             boolean haveConnectedPlayers = connected && mService != null
-                    && !mService.getConnectedPlayers().isEmpty();
+                    && !mService.getPlayers().isEmpty();
 
             menu_item_players.setVisible(haveConnectedPlayers);
-            menu_item_playlist.setVisible(haveConnectedPlayers);
             menu_item_alarm.setVisible(haveConnectedPlayers);
-            if (connected)
-                menu_item_alarm.setTitle(ServerString.ALARM.getLocalizedString());
-            menu_item_search.setEnabled(connected);
         }
 
-        // Don't show the item to go to CurrentPlaylistActivity if in CurrentPlaylistActivity.
-        if (mActivity instanceof CurrentPlaylistActivity && menu_item_playlist != null) {
-            menu_item_playlist.setVisible(false);
+        // Don't show the item to go to players if in PlayersActivity.
+        if (mActivity instanceof PlayerListActivity && menu_item_players != null) {
+            menu_item_players.setVisible(false);
         }
+
         // Don't show the item to go to alarms if in AlarmsActivity.
         if (mActivity instanceof AlarmsActivity && menu_item_alarm != null) {
             menu_item_alarm.setVisible(false);
@@ -982,14 +889,11 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
+            case R.id.menu_item_search:
+                PluginListActivity.show(mActivity, globalSearch, globalSearch.goAction);
+                return true;
             case R.id.menu_item_settings:
                 SettingsActivity.show(mActivity);
-                return true;
-            case R.id.menu_item_search:
-                mActivity.onSearchRequested();
-                return true;
-            case R.id.menu_item_connect:
-                onUserInitiatesConnect();
                 return true;
             case R.id.menu_item_disconnect:
                 mService.disconnect();
@@ -1000,9 +904,6 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
             case R.id.menu_item_poweroff:
                 mService.powerOff();
                 return true;
-            case R.id.menu_item_playlist:
-                CurrentPlaylistActivity.show(mActivity);
-                break;
             case R.id.menu_item_players:
                 PlayerListActivity.show(mActivity);
                 return true;
@@ -1023,15 +924,7 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
      * @return true if they have, false otherwise.
      */
     private boolean isManualDisconnect() {
-        return getActivity() instanceof DisconnectedActivity;
-    }
-
-    private void onUserInitiatesConnect() {
-        if (mService == null) {
-            Log.e(TAG, "serviceStub is null.");
-            return;
-        }
-        startVisibleConnection();
+        return getActivity() instanceof ConnectActivity;
     }
 
     public void startVisibleConnection() {
@@ -1070,11 +963,9 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
             }
         }
 
-        Preferences.ServerAddress serverAddress = preferences.getServerAddress();
-        String ipPort = serverAddress.address;
-        if (ipPort == null) {
+        if (!preferences.hasServerConfig()) {
             // Set up a server connection, if it is not present
-            DisconnectedActivity.show(mActivity);
+            ConnectActivity.show(mActivity);
             return;
         }
 
@@ -1082,9 +973,7 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
             Log.v(TAG, "Connection is already in progress, connecting aborted");
             return;
         }
-        Log.v(TAG, "startConnect, ipPort: " + ipPort);
-        mService.startConnect(ipPort, preferences.getUserName(serverAddress, "test"),
-                preferences.getPassword(serverAddress, "test1"));
+        mService.startConnect();
     }
 
 
@@ -1098,33 +987,44 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
         }
 
         // Handle any of the reasons for disconnection, clear the dialog and show the
-        // DisconnectedActivity.
+        // ConnectActivity.
         if (event.connectionState == ConnectionState.DISCONNECTED) {
             dismissConnectingDialog();
-            DisconnectedActivity.show(mActivity);
+            ConnectActivity.show(mActivity);
             return;
         }
 
         if (event.connectionState == ConnectionState.CONNECTION_FAILED) {
             dismissConnectingDialog();
-            DisconnectedActivity.showConnectionFailed(mActivity);
+            switch (event.connectionError) {
+                case LOGIN_FALIED:
+                    ConnectActivity.showLoginFailed(mActivity);
+                    break;
+                case INVALID_URL:
+                    ConnectActivity.showInvalidUrl(mActivity);
+                    break;
+                case START_CLIENT_ERROR:
+                case CONNECTION_ERROR:
+                    ConnectActivity.showConnectionFailed(mActivity);
+                    break;
+            }
             return;
         }
 
-        if (event.connectionState == ConnectionState.LOGIN_FAILED) {
+        if (event.connectionState == ConnectionState.RECONNECT) {
             dismissConnectingDialog();
-            DisconnectedActivity.showLoginFailed(mActivity);
+            HomeActivity.show(mActivity);
             return;
         }
 
-        // Any other event means that a connection is in progress, make sure the dialog is showing.
-        showConnectingDialog();
+        // Any other event means that a connection is in progress or completed.
+        // Show the the dialog if appropriate.
+        if (event.connectionState != ConnectionState.CONNECTION_COMPLETED) {
+            showConnectingDialog();
+        }
 
         // Ensure that option menu item state is adjusted as appropriate.
         getActivity().supportInvalidateOptionsMenu();
-
-        playPauseButton.setImageResource(
-                mActivity.getAttributeValue(R.attr.ic_action_av_connect));
 
         disableButton(nextButton);
         disableButton(prevButton);
@@ -1132,12 +1032,15 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
         if (mFullHeightLayout) {
             shuffleButton.setEnabled(false);
             repeatButton.setEnabled(false);
+            volumeButton.setEnabled(false);
+            playlistButton.setEnabled(false);
 
             albumArt.setImageResource(R.drawable.icon_album_noart_fullscreen);
             shuffleButton.setImageResource(0);
             repeatButton.setImageResource(0);
             updatePlayerDropDown(Collections.<Player>emptyList(), null);
             artistText.setText(getText(R.string.disconnected_text));
+            btnContextMenu.setVisibility(View.GONE);
             currentTime.setText("--:--");
             totalTime.setText("--:--");
             seekBar.setEnabled(false);
@@ -1169,13 +1072,10 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
             shuffleButton.setEnabled(true);
             repeatButton.setEnabled(true);
             seekBar.setEnabled(true);
+            volumeButton.setEnabled(true);
+            playlistButton.setEnabled(true);
         } else {
             mProgressBar.setEnabled(true);
-        }
-
-        serverCanFavorite = event.canFavorites;
-        if (!serverCanFavorite && btnFavorite != null) {
-            btnFavorite.setVisibility(View.GONE);
         }
 
         PlayerState playerState = getPlayerState();
@@ -1189,6 +1089,12 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     }
 
     @MainThread
+    public void onEventMainThread(@SuppressWarnings("unused") RegisterSqueezeNetwork event) {
+        // We're connected but the controller needs to register with the server
+        PluginListActivity.register(mActivity);
+    }
+
+    @MainThread
     public void onEventMainThread(MusicChanged event) {
         if (event.player.equals(mService.getActivePlayer())) {
             updateSongInfo(event.playerState);
@@ -1198,12 +1104,13 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     @MainThread
     public void onEventMainThread(PlayersChanged event) {
         updatePlayerDropDown(event.players.values(), mService.getActivePlayer());
-        updateUiFromPlayerState(mService.getActivePlayerState());
     }
 
     @MainThread
     public void onEventMainThread(PlayStatusChanged event) {
-        updatePlayPauseIcon(event.playStatus);
+        if (event.player.equals(mService.getActivePlayer())) {
+            updatePlayPauseIcon(event.playStatus);
+        }
     }
 
     @MainThread
@@ -1214,13 +1121,23 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     }
 
     @MainThread
+    public void onEventMainThread(HomeMenuEvent event) {
+        globalSearch = null;
+        for (Plugin menuItem : event.menuItems) {
+            if ("globalSearch".equals(menuItem.getId()) && menuItem.goAction != null) {
+                globalSearch = menuItem;
+                break;
+            }
+        }
+        if (menu_item_search != null) {
+            menu_item_search.setVisible(globalSearch != null);
+        }
+    }
+
+    @MainThread
     public void onEventMainThread(RepeatStatusChanged event) {
         if (event.player.equals(mService.getActivePlayer())) {
             updateRepeatStatus(event.repeatStatus);
-            if (!event.initial) {
-                Toast.makeText(mActivity, mActivity.getServerString(event.repeatStatus.getText()),
-                        Toast.LENGTH_SHORT).show();
-            }
         }
     }
 
@@ -1228,11 +1145,6 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
     public void onEventMainThread(ShuffleStatusChanged event) {
         if (event.player.equals(mService.getActivePlayer())) {
             updateShuffleStatus(event.shuffleStatus);
-            if (!event.initial) {
-                Toast.makeText(mActivity,
-                        mActivity.getServerString(event.shuffleStatus.getText()),
-                        Toast.LENGTH_SHORT).show();
-            }
         }
     }
 
@@ -1241,33 +1153,5 @@ public class NowPlayingFragment extends Fragment implements View.OnCreateContext
         if (event.player.equals(mService.getActivePlayer())) {
             updateTimeDisplayTo(event.currentPosition, event.duration);
         }
-    }
-
-    @MainThread
-    public void onEventMainThread(FavoritesExists event) {
-        if (btnFavorite == null) {
-            return;
-        }
-
-        Song song = getCurrentSong();
-        if (song == null) {
-            return;
-        }
-
-        if (!event.url.equals(song.getUrl())) {
-            return;
-        }
-
-        btnFavorite.setState(event.isFavorite ? FAVORITE_TRUE : FAVORITE_FALSE, event.index);
-    }
-
-    /**
-     * Clear the details of the current song's favorite information.
-     */
-    private void clearFavoriteInfo() {
-        if (btnFavorite == null) {
-            return;
-        }
-        btnFavorite.setState(FAVORITE_UNKNOWN, "");
     }
 }
